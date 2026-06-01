@@ -110,6 +110,7 @@ class MainActivity : AppCompatActivity() {
             arr.put(JSONObject().apply {
                 put("e", e.ejercicio)
                 put("b", e.bpm)
+                put("m", e.meta)
                 put("n", e.notas)
             })
         }
@@ -124,7 +125,7 @@ class MainActivity : AppCompatActivity() {
             val arr = JSONArray(json)
             (0 until arr.length()).map {
                 val o = arr.getJSONObject(it)
-                LogEntry(o.optString("e"), o.optString("b"), o.optString("n"))
+                LogEntry(o.optString("e"), o.optString("b"), o.optString("m"), o.optString("n"))
             }.toMutableList()
         } catch (_: Exception) { mutableListOf() }
     }

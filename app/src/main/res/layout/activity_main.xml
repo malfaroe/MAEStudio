@@ -459,7 +459,7 @@
                     android:letterSpacing="0.1"/>
 
                 <TextView
-                    android:layout_width="64dp"
+                    android:layout_width="54dp"
                     android:layout_height="wrap_content"
                     android:text="BPM"
                     android:textColor="@color/text_secondary"
@@ -468,9 +468,27 @@
                     android:letterSpacing="0.1"/>
 
                 <TextView
+                    android:layout_width="54dp"
+                    android:layout_height="wrap_content"
+                    android:text="META"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="13sp"
+                    android:gravity="center"
+                    android:letterSpacing="0.1"/>
+
+                <TextView
+                    android:layout_width="44dp"
+                    android:layout_height="wrap_content"
+                    android:text="%"
+                    android:textColor="@color/rest"
+                    android:textSize="13sp"
+                    android:gravity="center"
+                    android:letterSpacing="0.1"/>
+
+                <TextView
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_weight="2"
+                    android:layout_weight="1"
                     android:text="NOTAS"
                     android:textColor="@color/text_secondary"
                     android:textSize="13sp"

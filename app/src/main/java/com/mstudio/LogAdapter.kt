@@ -8,6 +8,7 @@ import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.RecyclerView
 import com.mstudio.databinding.ItemLogEntryBinding
 import java.util.Collections
+import kotlin.math.roundToInt
 
 class LogAdapter(
     val items: MutableList<LogEntry>,
@@ -28,11 +29,14 @@ class LogAdapter(
 
         b.etEjercicio.setOnFocusChangeListener(null)
         b.etBpm.setOnFocusChangeListener(null)
+        b.etMeta.setOnFocusChangeListener(null)
         b.etNotas.setOnFocusChangeListener(null)
 
         b.etEjercicio.setText(entry.ejercicio)
         b.etBpm.setText(entry.bpm)
+        b.etMeta.setText(entry.meta)
         b.etNotas.setText(entry.notas)
+        b.tvPercent.text = calcPercent(entry.bpm, entry.meta)
 
         b.etEjercicio.setOnFocusChangeListener { _, has ->
             if (!has) {
@@ -48,6 +52,17 @@ class LogAdapter(
                 val pos = holder.bindingAdapterPosition
                 if (pos != RecyclerView.NO_POSITION) {
                     items[pos].bpm = b.etBpm.text.toString()
+                    b.tvPercent.text = calcPercent(items[pos].bpm, items[pos].meta)
+                    onChanged()
+                }
+            }
+        }
+        b.etMeta.setOnFocusChangeListener { _, has ->
+            if (!has) {
+                val pos = holder.bindingAdapterPosition
+                if (pos != RecyclerView.NO_POSITION) {
+                    items[pos].meta = b.etMeta.text.toString()
+                    b.tvPercent.text = calcPercent(items[pos].bpm, items[pos].meta)
                     onChanged()
                 }
             }
@@ -82,6 +97,12 @@ class LogAdapter(
         items.removeAt(pos)
         notifyItemRemoved(pos)
         onChanged()
+    }
+
+    private fun calcPercent(bpm: String, meta: String): String {
+        val b = bpm.toFloatOrNull() ?: return "—"
+        val m = meta.toFloatOrNull()?.takeIf { it > 0f } ?: return "—"
+        return "${(b / m * 100).roundToInt()}%"
     }
 }
 
