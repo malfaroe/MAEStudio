@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg">#121212</color>
+    <color name="surface">#1E1E1E</color>
+    <color name="work">#FF6B35</color>
+    <color name="rest">#4ECDC4</color>
+    <color name="bpm">#F7DC6F</color>
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_secondary">#9E9E9E</color>
+    <color name="btn_start">#4CAF50</color>
+    <color name="btn_stop">#F44336</color>
+    <color name="divider">#2C2C2C</color>
+</resources>
