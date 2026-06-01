@@ -424,98 +424,132 @@
     </ScrollView>
 
     <!-- ══ LOG tab ══ -->
-    <FrameLayout
+    <LinearLayout
         android:id="@+id/logContainer"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
+        android:orientation="vertical"
         android:visibility="gone">
 
+        <!-- Add row button -->
+        <Button
+            android:id="@+id/fabAddLog"
+            android:layout_width="match_parent"
+            android:layout_height="36dp"
+            android:text="+ AGREGAR EJERCICIO"
+            android:textSize="12sp"
+            android:textColor="@color/text_primary"
+            android:letterSpacing="0.1"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"/>
+
+        <!-- Column headers -->
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:orientation="vertical">
-
-            <!-- Column headers -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="36dp"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:background="@drawable/section_bg"
-                android:paddingEnd="8dp">
-
-                <View
-                    android:layout_width="40dp"
-                    android:layout_height="match_parent"/>
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="2"
-                    android:text="EJERCICIO"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="13sp"
-                    android:letterSpacing="0.1"/>
-
-                <TextView
-                    android:layout_width="54dp"
-                    android:layout_height="wrap_content"
-                    android:text="BPM"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="13sp"
-                    android:gravity="center"
-                    android:letterSpacing="0.1"/>
-
-                <TextView
-                    android:layout_width="54dp"
-                    android:layout_height="wrap_content"
-                    android:text="META"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="13sp"
-                    android:gravity="center"
-                    android:letterSpacing="0.1"/>
-
-                <TextView
-                    android:layout_width="44dp"
-                    android:layout_height="wrap_content"
-                    android:text="%"
-                    android:textColor="@color/rest"
-                    android:textSize="13sp"
-                    android:gravity="center"
-                    android:letterSpacing="0.1"/>
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="NOTAS"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="13sp"
-                    android:letterSpacing="0.1"
-                    android:paddingStart="4dp"/>
-            </LinearLayout>
+            android:layout_height="36dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/section_bg"
+            android:paddingEnd="8dp">
 
             <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="#333333"/>
+                android:layout_width="40dp"
+                android:layout_height="match_parent"/>
 
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/rvLog"
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1"/>
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="2"
+                android:text="EJERCICIO"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp"
+                android:letterSpacing="0.1"/>
+
+            <TextView
+                android:layout_width="54dp"
+                android:layout_height="wrap_content"
+                android:text="BPM"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp"
+                android:gravity="center"
+                android:letterSpacing="0.1"/>
+
+            <TextView
+                android:layout_width="54dp"
+                android:layout_height="wrap_content"
+                android:text="META"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp"
+                android:gravity="center"
+                android:letterSpacing="0.1"/>
+
+            <TextView
+                android:layout_width="44dp"
+                android:layout_height="wrap_content"
+                android:text="%"
+                android:textColor="@color/rest"
+                android:textSize="13sp"
+                android:gravity="center"
+                android:letterSpacing="0.1"/>
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="NOTAS"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp"
+                android:letterSpacing="0.1"
+                android:paddingStart="4dp"/>
         </LinearLayout>
 
-        <com.google.android.material.floatingactionbutton.FloatingActionButton
-            android:id="@+id/fabAddLog"
-            android:layout_width="wrap_content"
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#333333"/>
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvLog"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"/>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#333333"/>
+
+        <!-- Notes section -->
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_gravity="bottom|end"
-            android:layout_margin="16dp"
-            android:contentDescription="Agregar ejercicio"
-            app:srcCompat="@android:drawable/ic_input_add"/>
-    </FrameLayout>
+            android:orientation="vertical"
+            android:background="@drawable/section_bg"
+            android:padding="12dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="NOTAS DE SESIÓN"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp"
+                android:letterSpacing="0.2"
+                android:layout_marginBottom="6dp"/>
+
+            <EditText
+                android:id="@+id/etSessionNotes"
+                android:layout_width="match_parent"
+                android:layout_height="110dp"
+                android:background="@null"
+                android:textColor="@color/text_primary"
+                android:textSize="14sp"
+                android:hint="Escribe tus notas de sesión aquí..."
+                android:textColorHint="@color/text_secondary"
+                android:inputType="textMultiLine"
+                android:gravity="top|start"
+                android:scrollbars="vertical"/>
+        </LinearLayout>
+
+    </LinearLayout>
 
 </LinearLayout>

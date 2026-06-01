@@ -5,6 +5,8 @@ import android.content.res.ColorStateList
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.View
 import android.view.WindowManager
 import androidx.appcompat.app.AppCompatActivity
@@ -102,7 +104,25 @@ class MainActivity : AppCompatActivity() {
             saveLog(logEntries)
             b.rvLog.scrollToPosition(logEntries.size - 1)
         }
+
+        b.etSessionNotes.setText(loadSessionNotes())
+        b.etSessionNotes.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                saveSessionNotes(s?.toString() ?: "")
+            }
+        })
     }
+
+    private fun saveSessionNotes(text: String) {
+        getSharedPreferences("mstudio_log", Context.MODE_PRIVATE)
+            .edit().putString("session_notes", text).apply()
+    }
+
+    private fun loadSessionNotes(): String =
+        getSharedPreferences("mstudio_log", Context.MODE_PRIVATE)
+            .getString("session_notes", "") ?: ""
 
     private fun saveLog(entries: List<LogEntry>) {
         val arr = JSONArray()
