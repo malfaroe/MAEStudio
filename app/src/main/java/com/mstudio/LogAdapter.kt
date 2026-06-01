@@ -77,17 +77,30 @@ class LogAdapter(
         notifyItemMoved(from, to)
         onChanged()
     }
+
+    fun removeItem(pos: Int) {
+        items.removeAt(pos)
+        notifyItemRemoved(pos)
+        onChanged()
+    }
 }
 
 class LogDragCallback(private val adapter: LogAdapter) : ItemTouchHelper.Callback() {
     override fun getMovementFlags(rv: RecyclerView, vh: RecyclerView.ViewHolder) =
-        makeMovementFlags(ItemTouchHelper.UP or ItemTouchHelper.DOWN, 0)
+        makeMovementFlags(
+            ItemTouchHelper.UP or ItemTouchHelper.DOWN,
+            ItemTouchHelper.LEFT or ItemTouchHelper.RIGHT
+        )
 
     override fun onMove(rv: RecyclerView, vh: RecyclerView.ViewHolder, target: RecyclerView.ViewHolder): Boolean {
         adapter.onItemMove(vh.bindingAdapterPosition, target.bindingAdapterPosition)
         return true
     }
 
-    override fun onSwiped(vh: RecyclerView.ViewHolder, direction: Int) {}
+    override fun onSwiped(vh: RecyclerView.ViewHolder, direction: Int) {
+        val pos = vh.bindingAdapterPosition
+        if (pos != RecyclerView.NO_POSITION) adapter.removeItem(pos)
+    }
+
     override fun isLongPressDragEnabled() = false
 }
