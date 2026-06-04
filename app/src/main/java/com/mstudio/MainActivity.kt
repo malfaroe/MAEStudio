@@ -5,6 +5,7 @@ import android.content.res.ColorStateList
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
@@ -27,19 +28,22 @@ class MainActivity : AppCompatActivity() {
 
     enum class Phase { IDLE, WORK, REST }
 
-    private var phase        = Phase.IDLE
-    private var workMins     = 5
-    private var restMins     = 2
-    private var totalCycles  = 5
-    private var currentCycle = 0
-    private var remaining    = 0
+    private var phase            = Phase.IDLE
+    private var workMins         = 5
+    private var restMins         = 2
+    private var totalCycles      = 5
+    private var currentCycle     = 0
+    private var remaining        = 0
+    private var phaseDurationSec = 0
+    private var phaseStartEpoch  = 0L   // SystemClock.elapsedRealtime() al inicio de la fase
 
     private val tabataHandler = Handler(Looper.getMainLooper())
     private val tabataTicker  = object : Runnable {
         override fun run() {
-            remaining--
+            val elapsed = ((SystemClock.elapsedRealtime() - phaseStartEpoch) / 1000).toInt()
+            remaining = (phaseDurationSec - elapsed).coerceAtLeast(0)
             updateRunningDisplay()
-            if (remaining <= 0) advancePhase() else tabataHandler.postDelayed(this, 1000)
+            if (remaining <= 0) advancePhase() else tabataHandler.postDelayed(this, 500)
         }
     }
 
@@ -65,6 +69,44 @@ class MainActivity : AppCompatActivity() {
         setupTabata()
         setupMetronome()
         setupLog()
+        savedInstanceState?.let { restore(it) }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        if (phase != Phase.IDLE) {
+            outState.putInt("phase",         phase.ordinal)
+            outState.putInt("workMins",      workMins)
+            outState.putInt("restMins",      restMins)
+            outState.putInt("totalCycles",   totalCycles)
+            outState.putInt("currentCycle",  currentCycle)
+            outState.putInt("phaseDuration", phaseDurationSec)
+            outState.putLong("phaseStart",   phaseStartEpoch)
+        }
+    }
+
+    private fun restore(state: Bundle) {
+        val p = Phase.values().getOrNull(state.getInt("phase", -1)) ?: return
+        if (p == Phase.IDLE) return
+        workMins         = state.getInt("workMins",      workMins)
+        restMins         = state.getInt("restMins",      restMins)
+        totalCycles      = state.getInt("totalCycles",   totalCycles)
+        currentCycle     = state.getInt("currentCycle",  1)
+        phaseDurationSec = state.getInt("phaseDuration", 0)
+        phaseStartEpoch  = state.getLong("phaseStart",   SystemClock.elapsedRealtime())
+        phase            = p
+
+        val elapsed = ((SystemClock.elapsedRealtime() - phaseStartEpoch) / 1000).toInt()
+        remaining = (phaseDurationSec - elapsed).coerceAtLeast(0)
+
+        b.configSection.visibility  = View.GONE
+        b.runningSection.visibility = View.VISIBLE
+        setTabataButton(stop = true)
+        updateConfigDisplay()
+        updateRunningDisplay()
+
+        if (remaining > 0) tabataHandler.postDelayed(tabataTicker, 500)
+        else advancePhase()
     }
 
     override fun onDestroy() {
@@ -170,15 +212,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startTabata() {
-        phase        = Phase.WORK
-        currentCycle = 1
-        remaining    = workMins * 60
+        phase            = Phase.WORK
+        currentCycle     = 1
+        phaseDurationSec = workMins * 60
+        phaseStartEpoch  = SystemClock.elapsedRealtime()
+        remaining        = phaseDurationSec
         b.configSection.visibility  = View.GONE
         b.runningSection.visibility = View.VISIBLE
         setTabataButton(stop = true)
         sound.playWork()
         updateRunningDisplay()
-        tabataHandler.postDelayed(tabataTicker, 1000)
+        tabataHandler.postDelayed(tabataTicker, 500)
     }
 
     private fun stopTabata() {
@@ -192,11 +236,13 @@ class MainActivity : AppCompatActivity() {
     private fun advancePhase() {
         when (phase) {
             Phase.WORK -> {
-                phase     = Phase.REST
-                remaining = restMins * 60
+                phase            = Phase.REST
+                phaseDurationSec = restMins * 60
+                phaseStartEpoch  = SystemClock.elapsedRealtime()
+                remaining        = phaseDurationSec
                 sound.playRest()
                 updateRunningDisplay()
-                tabataHandler.postDelayed(tabataTicker, 1000)
+                tabataHandler.postDelayed(tabataTicker, 500)
             }
             Phase.REST -> {
                 if (currentCycle >= totalCycles) {
@@ -204,11 +250,13 @@ class MainActivity : AppCompatActivity() {
                     stopTabata()
                 } else {
                     currentCycle++
-                    phase     = Phase.WORK
-                    remaining = workMins * 60
+                    phase            = Phase.WORK
+                    phaseDurationSec = workMins * 60
+                    phaseStartEpoch  = SystemClock.elapsedRealtime()
+                    remaining        = phaseDurationSec
                     sound.playWork()
                     updateRunningDisplay()
-                    tabataHandler.postDelayed(tabataTicker, 1000)
+                    tabataHandler.postDelayed(tabataTicker, 500)
                 }
             }
             Phase.IDLE -> {}
