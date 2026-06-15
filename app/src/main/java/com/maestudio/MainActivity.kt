@@ -1,4 +1,4 @@
-package com.mstudio
+package com.maestudio
 
 import android.content.Context
 import android.content.res.ColorStateList
@@ -14,7 +14,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.tabs.TabLayout
-import com.mstudio.databinding.ActivityMainBinding
+import com.maestudio.databinding.ActivityMainBinding
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.math.roundToInt
@@ -35,7 +35,7 @@ class MainActivity : AppCompatActivity() {
     private var currentCycle     = 0
     private var remaining        = 0
     private var phaseDurationSec = 0
-    private var phaseStartEpoch  = 0L   // SystemClock.elapsedRealtime() al inicio de la fase
+    private var phaseStartEpoch  = 0L
 
     private val tabataHandler = Handler(Looper.getMainLooper())
     private val tabataTicker  = object : Runnable {
@@ -50,6 +50,7 @@ class MainActivity : AppCompatActivity() {
     // ── Metronome ────────────────────────────────────────────────────────────
 
     private var bpm          = 120.0f
+    private var startBpm     = 120.0f
     private var metroRunning = false
     private val metro        = MetronomePlayer()
 
@@ -158,12 +159,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun saveSessionNotes(text: String) {
-        getSharedPreferences("mstudio_log", Context.MODE_PRIVATE)
+        getSharedPreferences("maestudio_log", Context.MODE_PRIVATE)
             .edit().putString("session_notes", text).apply()
     }
 
     private fun loadSessionNotes(): String =
-        getSharedPreferences("mstudio_log", Context.MODE_PRIVATE)
+        getSharedPreferences("maestudio_log", Context.MODE_PRIVATE)
             .getString("session_notes", "") ?: ""
 
     private fun saveLog(entries: List<LogEntry>) {
@@ -176,12 +177,12 @@ class MainActivity : AppCompatActivity() {
                 put("n", e.notas)
             })
         }
-        getSharedPreferences("mstudio_log", Context.MODE_PRIVATE)
+        getSharedPreferences("maestudio_log", Context.MODE_PRIVATE)
             .edit().putString("entries", arr.toString()).apply()
     }
 
     private fun loadLog(): MutableList<LogEntry> {
-        val json = getSharedPreferences("mstudio_log", Context.MODE_PRIVATE)
+        val json = getSharedPreferences("maestudio_log", Context.MODE_PRIVATE)
             .getString("entries", "[]") ?: "[]"
         return try {
             val arr = JSONArray(json)
@@ -283,6 +284,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupMetronome() {
         b.tvBpm.text = "%.1f".format(bpm)
+
         b.btnBpm5Minus.setOnClickListener  { changeBpm(-5.0f) }
         b.btnBpm1Minus.setOnClickListener  { changeBpm(-1.0f) }
         b.btnBpmD1Minus.setOnClickListener { changeBpm(-0.1f) }
@@ -290,8 +292,17 @@ class MainActivity : AppCompatActivity() {
         b.btnBpm1Plus.setOnClickListener   { changeBpm(+1.0f) }
         b.btnBpmD1Plus.setOnClickListener  { changeBpm(+0.1f) }
         b.btnMetro.setOnClickListener      { if (metroRunning) stopMetro() else startMetro() }
+
         b.sliderVolume.value = 85f
         b.sliderVolume.addOnChangeListener { _, value, _ -> metro.volume = value / 100f }
+
+        b.sliderAccel.value = 0f
+        b.tvAccelVal.text = "0.0"
+        b.sliderAccel.addOnChangeListener { _, value, _ ->
+            val rounded = (value * 10).roundToInt() / 10.0f
+            metro.accelerando = rounded
+            b.tvAccelVal.text = "%.1f".format(rounded)
+        }
     }
 
     private fun changeBpm(delta: Float) {
@@ -302,9 +313,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startMetro() {
+        startBpm = bpm
         metroRunning = true
         metro.bpm    = bpm
         metro.volume = b.sliderVolume.value / 100f
+        metro.accelerando = b.sliderAccel.value
+        metro.onBpmChanged = { newBpm ->
+            bpm = newBpm
+            b.tvBpm.text = "%.1f".format(newBpm)
+        }
         metro.start()
         setMetroButton(stop = true)
     }
@@ -312,6 +329,10 @@ class MainActivity : AppCompatActivity() {
     private fun stopMetro() {
         metroRunning = false
         metro.stop()
+        metro.onBpmChanged = null
+        bpm = startBpm
+        b.tvBpm.text = "%.1f".format(bpm)
+        metro.bpm = bpm
         setMetroButton(stop = false)
     }
 

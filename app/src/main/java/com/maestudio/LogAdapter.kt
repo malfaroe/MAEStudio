@@ -1,4 +1,4 @@
-package com.mstudio
+package com.maestudio
 
 import android.annotation.SuppressLint
 import android.view.LayoutInflater
@@ -6,7 +6,7 @@ import android.view.MotionEvent
 import android.view.ViewGroup
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.RecyclerView
-import com.mstudio.databinding.ItemLogEntryBinding
+import com.maestudio.databinding.ItemLogEntryBinding
 import java.util.Collections
 import kotlin.math.roundToInt
 

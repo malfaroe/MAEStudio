@@ -1,22 +1,28 @@
-package com.mstudio
+package com.maestudio
 
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
+import android.os.Handler
+import android.os.Looper
 import kotlin.math.*
 
 class MetronomePlayer {
 
-    @Volatile var bpm    = 120.0f
-    @Volatile var volume = 0.85f
+    @Volatile var bpm         = 120.0f
+    @Volatile var volume      = 0.85f
+    @Volatile var accelerando = 0.0f   // BPM added per bar (0 = off)
+    @Volatile var beatsPerBar = 4
+
+    var onBpmChanged: ((Float) -> Unit)? = null
 
     @Volatile private var running = false
 
-    private val rate     = 44100
-    private val clickBuf = buildClick()
+    private val rate      = 44100
+    private val clickBuf  = buildClick()
+    private val mainHandler = Handler(Looper.getMainLooper())
 
-    // 1131 Hz (400 Hz × 2^1.5 = +1.5 octaves), 150 ms, exp(-30) decay ≈ 50 ms audible.
-    // Amplitude ×4 with hard clip → louder perceived volume (+400%), slight square-wave saturation.
+    // 1131 Hz, 150 ms, exp(-30) decay. Amplitude ×4 with hard clip.
     private fun buildClick(): ShortArray {
         val n      = rate * 150 / 1000
         val buf    = ShortArray(n)
@@ -65,18 +71,25 @@ class MetronomePlayer {
         track.play()
 
         val chunk    = ShortArray(chunkSize)
-        // Start phase at spb so the very first sample triggers the first beat immediately
-        var phase    = rate * 60.0 / bpm
+        var phase    = rate * 60.0 / bpm   // start at spb so first beat fires immediately
         var clickPos = -1
+        var beatCount = 0L
 
         while (running) {
-            val spb = rate * 60.0 / bpm   // samples per beat — read once per chunk
+            val spb = rate * 60.0 / bpm
             val vol = volume
 
             for (i in chunk.indices) {
                 if (phase >= spb) {
                     phase -= spb
-                    clickPos = 0            // new beat: restart click
+                    clickPos = 0
+                    beatCount++
+                    // After each complete bar, raise BPM if accelerando is active
+                    if (accelerando > 0f && beatCount % beatsPerBar == 0L) {
+                        val newBpm = (bpm + accelerando).coerceAtMost(240f)
+                        bpm = newBpm
+                        mainHandler.post { onBpmChanged?.invoke(newBpm) }
+                    }
                 }
                 chunk[i] = if (clickPos in 0 until clickBuf.size) {
                     (clickBuf[clickPos++] * vol).toInt().toShort()

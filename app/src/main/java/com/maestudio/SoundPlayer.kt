@@ -1,4 +1,4 @@
-package com.mstudio
+package com.maestudio
 
 import android.media.AudioAttributes
 import android.media.AudioFormat
@@ -19,8 +19,6 @@ class SoundPlayer {
         playToneSync(659f, 600)
     }.start()
 
-    // Warm "tok": 400 Hz sine, 2 ms attack, exp(-30) decay ≈ 25 ms audible.
-    // 200 ms buffer ensures we're always above device minBufferSize.
     private fun playClickSync() {
         val rate = 44100
         val ms   = 200

@@ -1,4 +1,4 @@
-package com.mstudio
+package com.maestudio
 
 data class LogEntry(
     var ejercicio: String = "",

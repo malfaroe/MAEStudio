@@ -9,7 +9,7 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="M STUDIO"
+        android:text="MAE STUDIO"
         android:textColor="@color/text_primary"
         android:textSize="18sp"
         android:textStyle="bold"
@@ -407,6 +407,42 @@
                         android:valueTo="100"
                         android:value="85"
                         android:stepSize="1"/>
+                </LinearLayout>
+
+                <!-- Accelerando slider -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="12dp">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="ACCEL"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="11sp"
+                        android:letterSpacing="0.15"
+                        android:layout_marginEnd="8dp"/>
+                    <com.google.android.material.slider.Slider
+                        android:id="@+id/sliderAccel"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:valueFrom="0"
+                        android:valueTo="2"
+                        android:value="0"
+                        android:stepSize="0.1"/>
+                    <TextView
+                        android:id="@+id/tvAccelVal"
+                        android:layout_width="42dp"
+                        android:layout_height="wrap_content"
+                        android:text="0.0"
+                        android:textColor="@color/bpm"
+                        android:textSize="13sp"
+                        android:textStyle="bold"
+                        android:gravity="end"
+                        android:layout_marginStart="6dp"/>
                 </LinearLayout>
 
                 <Button

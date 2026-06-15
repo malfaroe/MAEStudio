@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace 'com.mstudio'
+    namespace 'com.maestudio'
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.mstudio"
+        applicationId "com.maestudio"
         minSdk 26
         targetSdk 34
         versionCode 1
