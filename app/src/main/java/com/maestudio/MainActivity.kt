@@ -49,10 +49,11 @@ class MainActivity : AppCompatActivity() {
 
     // ── Metronome ────────────────────────────────────────────────────────────
 
-    private var bpm          = 120.0f
-    private var startBpm     = 120.0f
-    private var metroRunning = false
-    private val metro        = MetronomePlayer()
+    private var bpm            = 120.0f
+    private var startBpm       = 120.0f
+    private var metroRunning   = false
+    private val metro          = MetronomePlayer()
+    private var selectedFigura = ""   // empty = libre (no accent)
 
     // ── Log ──────────────────────────────────────────────────────────────────
 
@@ -302,6 +303,42 @@ class MainActivity : AppCompatActivity() {
             val rounded = (value * 10).roundToInt() / 10.0f
             metro.accelerando = rounded
             b.tvAccelVal.text = "%.1f".format(rounded)
+        }
+
+        b.btn44.setOnClickListener { toggleFigura("4/4", 4, setOf(0)) }
+        b.btn34.setOnClickListener { toggleFigura("3/4", 3, setOf(0)) }
+        b.btn68.setOnClickListener { toggleFigura("6/8", 6, setOf(0, 3)) }
+        b.btn54.setOnClickListener { toggleFigura("5/4", 5, setOf(0)) }
+    }
+
+    private fun toggleFigura(sig: String, beats: Int, accents: Set<Int>) {
+        if (selectedFigura == sig) {
+            selectedFigura = ""
+            metro.beatsPerBar = 4
+            metro.accentBeats = emptySet()
+        } else {
+            selectedFigura = sig
+            metro.beatsPerBar = beats
+            metro.accentBeats = accents
+        }
+        updateFiguraButtons()
+    }
+
+    private fun updateFiguraButtons() {
+        val map = mapOf(
+            "4/4" to b.btn44,
+            "3/4" to b.btn34,
+            "6/8" to b.btn68,
+            "5/4" to b.btn54
+        )
+        map.forEach { (sig, btn) ->
+            val active = sig == selectedFigura
+            btn.backgroundTintList = ColorStateList.valueOf(
+                if (active) getColor(R.color.work) else android.graphics.Color.TRANSPARENT
+            )
+            btn.setTextColor(
+                if (active) getColor(R.color.text_primary) else getColor(R.color.text_secondary)
+            )
         }
     }
 

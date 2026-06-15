@@ -11,18 +11,20 @@ class MetronomePlayer {
 
     @Volatile var bpm         = 120.0f
     @Volatile var volume      = 0.85f
-    @Volatile var accelerando = 0.0f   // BPM added per bar (0 = off)
+    @Volatile var accelerando = 0.0f
     @Volatile var beatsPerBar = 4
+    @Volatile var accentBeats: Set<Int> = emptySet()   // beat indices (0-based) that get accent click
 
     var onBpmChanged: ((Float) -> Unit)? = null
 
     @Volatile private var running = false
 
-    private val rate      = 44100
-    private val clickBuf  = buildClick()
+    private val rate        = 44100
+    private val clickBuf    = buildClick()
+    private val accentBuf   = buildAccent()
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    // 1131 Hz, 150 ms, exp(-30) decay. Amplitude ×4 with hard clip.
+    // Normal beat: 1131 Hz, fast decay.
     private fun buildClick(): ShortArray {
         val n      = rate * 150 / 1000
         val buf    = ShortArray(n)
@@ -31,6 +33,20 @@ class MetronomePlayer {
         for (i in 0 until n) {
             val env = (if (i < attack) i.toDouble() / attack else 1.0) * exp(-30.0 * i / n)
             val raw = env * sin(2.0 * PI * 1131.0 * i / rate) * cap * 4.0
+            buf[i]  = raw.coerceIn(-cap, cap).toInt().toShort()
+        }
+        return buf
+    }
+
+    // Accent beat: 660 Hz (lower pitch = clearly distinguishable downbeat).
+    private fun buildAccent(): ShortArray {
+        val n      = rate * 150 / 1000
+        val buf    = ShortArray(n)
+        val attack = (rate * 0.002).toInt()
+        val cap    = Short.MAX_VALUE.toDouble()
+        for (i in 0 until n) {
+            val env = (if (i < attack) i.toDouble() / attack else 1.0) * exp(-25.0 * i / n)
+            val raw = env * sin(2.0 * PI * 660.0 * i / rate) * cap * 4.0
             buf[i]  = raw.coerceIn(-cap, cap).toInt().toShort()
         }
         return buf
@@ -70,10 +86,12 @@ class MetronomePlayer {
 
         track.play()
 
-        val chunk    = ShortArray(chunkSize)
-        var phase    = rate * 60.0 / bpm   // start at spb so first beat fires immediately
-        var clickPos = -1
-        var beatCount = 0L
+        val chunk       = ShortArray(chunkSize)
+        var phase       = rate * 60.0 / bpm
+        var clickPos    = -1
+        var beatCount   = 0L
+        var beatInBar   = 0
+        var activeBuf   = clickBuf
 
         while (running) {
             val spb = rate * 60.0 / bpm
@@ -82,17 +100,21 @@ class MetronomePlayer {
             for (i in chunk.indices) {
                 if (phase >= spb) {
                     phase -= spb
+                    // Choose accent or normal buffer for this beat
+                    val accents = accentBeats
+                    activeBuf = if (accents.isNotEmpty() && beatInBar in accents) accentBuf else clickBuf
                     clickPos = 0
                     beatCount++
-                    // After each complete bar, raise BPM if accelerando is active
-                    if (accelerando > 0f && beatCount % beatsPerBar == 0L) {
+                    val bpb = beatsPerBar.coerceAtLeast(1)
+                    beatInBar = (beatInBar + 1) % bpb
+                    if (accelerando > 0f && beatCount % bpb == 0L) {
                         val newBpm = (bpm + accelerando).coerceAtMost(240f)
                         bpm = newBpm
                         mainHandler.post { onBpmChanged?.invoke(newBpm) }
                     }
                 }
-                chunk[i] = if (clickPos in 0 until clickBuf.size) {
-                    (clickBuf[clickPos++] * vol).toInt().toShort()
+                chunk[i] = if (clickPos in 0 until activeBuf.size) {
+                    (activeBuf[clickPos++] * vol).toInt().toShort()
                 } else {
                     clickPos = -1
                     0

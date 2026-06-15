@@ -383,6 +383,70 @@
                     </LinearLayout>
                 </LinearLayout>
 
+                <!-- Compás selector -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="10dp">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="COMP"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="10sp"
+                        android:letterSpacing="0.15"
+                        android:layout_marginEnd="8dp"/>
+                    <Button
+                        android:id="@+id/btn44"
+                        android:layout_width="0dp"
+                        android:layout_height="34dp"
+                        android:layout_weight="1"
+                        android:text="4/4"
+                        android:textSize="12sp"
+                        android:textColor="@color/text_secondary"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:layout_marginEnd="4dp"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"/>
+                    <Button
+                        android:id="@+id/btn34"
+                        android:layout_width="0dp"
+                        android:layout_height="34dp"
+                        android:layout_weight="1"
+                        android:text="3/4"
+                        android:textSize="12sp"
+                        android:textColor="@color/text_secondary"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:layout_marginEnd="4dp"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"/>
+                    <Button
+                        android:id="@+id/btn68"
+                        android:layout_width="0dp"
+                        android:layout_height="34dp"
+                        android:layout_weight="1"
+                        android:text="6/8"
+                        android:textSize="12sp"
+                        android:textColor="@color/text_secondary"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:layout_marginEnd="4dp"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"/>
+                    <Button
+                        android:id="@+id/btn54"
+                        android:layout_width="0dp"
+                        android:layout_height="34dp"
+                        android:layout_weight="1"
+                        android:text="5/4"
+                        android:textSize="12sp"
+                        android:textColor="@color/text_secondary"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"/>
+                </LinearLayout>
+
                 <!-- Volume slider -->
                 <LinearLayout
                     android:layout_width="match_parent"
