@@ -35,6 +35,10 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="LOG"/>
+        <com.google.android.material.tabs.TabItem
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="HISTORIAL"/>
     </com.google.android.material.tabs.TabLayout>
 
     <!-- ══ FOCUS tab ══ -->
@@ -330,6 +334,15 @@
                             android:textColor="@color/text_secondary"
                             android:textSize="12sp"
                             android:letterSpacing="0.15"/>
+                        <TextView
+                            android:id="@+id/tvBpmReset"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:padding="8dp"
+                            android:textColor="@color/rest"
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            android:visibility="gone"/>
                     </LinearLayout>
 
                     <!-- Right: +5 / +1 / +0.1 -->
@@ -516,16 +529,35 @@
         android:orientation="vertical"
         android:visibility="gone">
 
-        <!-- Add row button -->
-        <Button
-            android:id="@+id/fabAddLog"
+        <!-- Add row and save session buttons -->
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="36dp"
-            android:text="+ AGREGAR EJERCICIO"
-            android:textSize="12sp"
-            android:textColor="@color/text_primary"
-            android:letterSpacing="0.1"
-            style="@style/Widget.MaterialComponents.Button.OutlinedButton"/>
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/fabAddLog"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginEnd="4dp"
+                android:text="+ EJERCICIO"
+                android:textSize="12sp"
+                android:textColor="@color/text_primary"
+                android:letterSpacing="0.1"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"/>
+
+            <Button
+                android:id="@+id/btnSaveSession"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="GUARDAR SESIÓN"
+                android:textSize="12sp"
+                android:textColor="@color/rest"
+                android:letterSpacing="0.1"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"/>
+        </LinearLayout>
 
         <!-- Column headers -->
         <LinearLayout
@@ -634,6 +666,63 @@
                 android:scrollbars="vertical"/>
         </LinearLayout>
 
+    </LinearLayout>
+
+    <!-- ══ HISTORIAL tab ══ -->
+    <LinearLayout
+        android:id="@+id/historyContainer"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btnExport"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginEnd="4dp"
+                android:text="EXPORTAR"
+                android:textSize="12sp"
+                android:textColor="@color/text_primary"
+                android:letterSpacing="0.1"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"/>
+
+            <Button
+                android:id="@+id/btnImport"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="IMPORTAR"
+                android:textSize="12sp"
+                android:textColor="@color/text_primary"
+                android:letterSpacing="0.1"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"/>
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/tvHistoryEmpty"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:padding="24dp"
+            android:text="Aún no hay sesiones. Usa GUARDAR SESIÓN en la pestaña LOG."
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp"/>
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvHistory"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:visibility="gone"/>
     </LinearLayout>
 
 </LinearLayout>

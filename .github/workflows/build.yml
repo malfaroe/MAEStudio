@@ -2,7 +2,7 @@ name: Build APK
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, 'mejoras-**' ]
   workflow_dispatch:
 
 jobs:
@@ -23,12 +23,27 @@ jobs:
         with:
           gradle-version: '8.2'
 
+      - name: Restore signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.MAESTUDIO_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/maestudio.keystore"
+            echo "MAESTUDIO_KEYSTORE=$RUNNER_TEMP/maestudio.keystore" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Falta MAESTUDIO_KEYSTORE_BASE64: el APK no podra instalarse sobre el anterior."
+          fi
+
       - name: Build debug APK
+        env:
+          MAESTUDIO_STORE_PASSWORD: ${{ secrets.MAESTUDIO_STORE_PASSWORD }}
+          MAESTUDIO_KEY_ALIAS: ${{ secrets.MAESTUDIO_KEY_ALIAS }}
+          MAESTUDIO_KEY_PASSWORD: ${{ secrets.MAESTUDIO_KEY_PASSWORD }}
         run: gradle assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: FocusMAE-debug
+          name: MAEStudio-debug
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 7

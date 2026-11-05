@@ -1,27 +1,38 @@
 package com.maestudio
 
+import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.res.ColorStateList
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import android.text.Editable
-import android.text.TextWatcher
 import android.view.View
 import android.view.WindowManager
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import androidx.core.widget.doAfterTextChanged
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.snackbar.Snackbar
 import com.google.android.material.tabs.TabLayout
 import com.maestudio.databinding.ActivityMainBinding
-import org.json.JSONArray
-import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.math.roundToInt
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var b: ActivityMainBinding
+    private lateinit var store: PracticeStore
     private val sound = SoundPlayer()
 
     // ── Tabata ───────────────────────────────────────────────────────────────
@@ -51,14 +62,41 @@ class MainActivity : AppCompatActivity() {
 
     private var bpm            = 120.0f
     private var startBpm       = 120.0f
+    private var volume         = 85f
+    private var accel          = 0f
     private var metroRunning   = false
     private val metro          = MetronomePlayer()
     private var selectedFigura = ""   // empty = libre (no accent)
 
-    // ── Log ──────────────────────────────────────────────────────────────────
+    private val figuras = mapOf(
+        "4/4" to Pair(4, setOf(0)),
+        "3/4" to Pair(3, setOf(0)),
+        "6/8" to Pair(6, setOf(0, 3)),
+        "5/4" to Pair(5, setOf(0))
+    )
+
+    // ── Log e historial ──────────────────────────────────────────────────────
 
     private lateinit var logEntries: MutableList<LogEntry>
     private lateinit var logAdapter: LogAdapter
+    private lateinit var sessions: MutableList<PracticeSession>
+    private lateinit var historyAdapter: HistoryAdapter
+
+    private val exportLauncher =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+            uri?.let { exportTo(it) }
+        }
+    private val importLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            uri?.let { confirmImport(it) }
+        }
+
+    // ── Segundo plano ────────────────────────────────────────────────────────
+
+    private var keepAliveOn = false
+    private var askedNotifications = false
+    private val notificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -67,11 +105,20 @@ class MainActivity : AppCompatActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         b = ActivityMainBinding.inflate(layoutInflater)
         setContentView(b.root)
+        store = PracticeStore(this)
+        loadSettings()
         setupTabs()
         setupTabata()
         setupMetronome()
         setupLog()
+        setupHistory()
         savedInstanceState?.let { restore(it) }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        saveSettings()
+        store.saveEntries(logEntries)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -106,6 +153,7 @@ class MainActivity : AppCompatActivity() {
         setTabataButton(stop = true)
         updateConfigDisplay()
         updateRunningDisplay()
+        updateKeepAlive()
 
         if (remaining > 0) tabataHandler.postDelayed(tabataTicker, 500)
         else advancePhase()
@@ -115,6 +163,33 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
         tabataHandler.removeCallbacks(tabataTicker)
         metro.stop()
+        if (keepAliveOn) stopService(Intent(this, PracticeService::class.java))
+    }
+
+    // ── Ajustes ──────────────────────────────────────────────────────────────
+
+    private fun loadSettings() {
+        val prefs = getSharedPreferences(SETTINGS, Context.MODE_PRIVATE)
+        bpm            = prefs.getFloat("bpm", bpm).coerceIn(MIN_BPM, MAX_BPM)
+        startBpm       = bpm
+        volume         = prefs.getFloat("volume", volume).roundToInt().coerceIn(0, 100).toFloat()
+        accel          = (prefs.getFloat("accel", accel).coerceIn(0f, 2f) * 10).roundToInt() / 10.0f
+        selectedFigura = (prefs.getString("figura", "") ?: "").takeIf { it in figuras } ?: ""
+        workMins       = prefs.getInt("workMins", workMins).coerceIn(1, 60)
+        restMins       = prefs.getInt("restMins", restMins).coerceIn(1, 30)
+        totalCycles    = prefs.getInt("totalCycles", totalCycles).coerceIn(1, 20)
+    }
+
+    private fun saveSettings() {
+        getSharedPreferences(SETTINGS, Context.MODE_PRIVATE).edit()
+            .putFloat("bpm", bpm)
+            .putFloat("volume", b.sliderVolume.value)
+            .putFloat("accel", b.sliderAccel.value)
+            .putString("figura", selectedFigura)
+            .putInt("workMins", workMins)
+            .putInt("restMins", restMins)
+            .putInt("totalCycles", totalCycles)
+            .apply()
     }
 
     // ── Tabs ──────────────────────────────────────────────────────────────────
@@ -122,8 +197,9 @@ class MainActivity : AppCompatActivity() {
     private fun setupTabs() {
         b.tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
             override fun onTabSelected(tab: TabLayout.Tab) {
-                b.focusContainer.visibility = if (tab.position == 0) View.VISIBLE else View.GONE
-                b.logContainer.visibility   = if (tab.position == 1) View.VISIBLE else View.GONE
+                b.focusContainer.visibility   = if (tab.position == 0) View.VISIBLE else View.GONE
+                b.logContainer.visibility     = if (tab.position == 1) View.VISIBLE else View.GONE
+                b.historyContainer.visibility = if (tab.position == 2) View.VISIBLE else View.GONE
             }
             override fun onTabUnselected(tab: TabLayout.Tab) {}
             override fun onTabReselected(tab: TabLayout.Tab) {}
@@ -133,8 +209,14 @@ class MainActivity : AppCompatActivity() {
     // ── Log ──────────────────────────────────────────────────────────────────
 
     private fun setupLog() {
-        logEntries = loadLog()
-        logAdapter = LogAdapter(logEntries) { saveLog(logEntries) }
+        logEntries = store.loadEntries()
+        logAdapter = LogAdapter(
+            items       = logEntries,
+            onChanged   = { store.saveEntries(logEntries) },
+            onRemoved   = { pos, entry -> offerLogUndo(pos, entry) },
+            onUseBpm    = { entry -> useBpmFrom(entry) },
+            onRecordBpm = { pos -> recordBpmIn(pos) }
+        )
         b.rvLog.layoutManager = LinearLayoutManager(this)
         b.rvLog.adapter = logAdapter
 
@@ -145,53 +227,134 @@ class MainActivity : AppCompatActivity() {
         b.fabAddLog.setOnClickListener {
             logEntries.add(LogEntry())
             logAdapter.notifyItemInserted(logEntries.size - 1)
-            saveLog(logEntries)
+            store.saveEntries(logEntries)
             b.rvLog.scrollToPosition(logEntries.size - 1)
         }
+        b.btnSaveSession.setOnClickListener { saveSession() }
 
-        b.etSessionNotes.setText(loadSessionNotes())
-        b.etSessionNotes.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-            override fun afterTextChanged(s: Editable?) {
-                saveSessionNotes(s?.toString() ?: "")
-            }
-        })
+        b.etSessionNotes.setText(store.loadNotes())
+        b.etSessionNotes.doAfterTextChanged { text -> store.saveNotes(text?.toString() ?: "") }
     }
 
-    private fun saveSessionNotes(text: String) {
-        getSharedPreferences("maestudio_log", Context.MODE_PRIVATE)
-            .edit().putString("session_notes", text).apply()
+    private fun offerLogUndo(pos: Int, entry: LogEntry) {
+        Snackbar.make(b.root, "Ejercicio eliminado", Snackbar.LENGTH_LONG)
+            .setAction("DESHACER") { logAdapter.restoreItem(pos, entry) }
+            .show()
     }
 
-    private fun loadSessionNotes(): String =
-        getSharedPreferences("maestudio_log", Context.MODE_PRIVATE)
-            .getString("session_notes", "") ?: ""
-
-    private fun saveLog(entries: List<LogEntry>) {
-        val arr = JSONArray()
-        entries.forEach { e ->
-            arr.put(JSONObject().apply {
-                put("e", e.ejercicio)
-                put("b", e.bpm)
-                put("m", e.meta)
-                put("n", e.notas)
-            })
+    private fun useBpmFrom(entry: LogEntry) {
+        val value = parseBpm(entry.bpm)
+        if (value == null) {
+            showMessage("Este ejercicio no tiene BPM")
+            return
         }
-        getSharedPreferences("maestudio_log", Context.MODE_PRIVATE)
-            .edit().putString("entries", arr.toString()).apply()
+        setBpm(value)
+        b.tabLayout.getTabAt(0)?.select()
     }
 
-    private fun loadLog(): MutableList<LogEntry> {
-        val json = getSharedPreferences("maestudio_log", Context.MODE_PRIVATE)
-            .getString("entries", "[]") ?: "[]"
-        return try {
-            val arr = JSONArray(json)
-            (0 until arr.length()).map {
-                val o = arr.getJSONObject(it)
-                LogEntry(o.optString("e"), o.optString("b"), o.optString("m"), o.optString("n"))
-            }.toMutableList()
-        } catch (_: Exception) { mutableListOf() }
+    private fun recordBpmIn(pos: Int) {
+        logEntries[pos].bpm = String.format(Locale.US, "%.1f", bpm)
+        logAdapter.notifyItemChanged(pos)
+        store.saveEntries(logEntries)
+    }
+
+    private fun saveSession() {
+        val entries = logEntries
+            .filter { it.ejercicio.isNotBlank() || it.bpm.isNotBlank() }
+            .map { it.copy() }
+        val notes = b.etSessionNotes.text.toString().trim()
+        if (entries.isEmpty() && notes.isEmpty()) {
+            showMessage("No hay datos para guardar")
+            return
+        }
+        historyAdapter.restoreItem(0, PracticeSession(System.currentTimeMillis(), notes, entries))
+        showMessage("Sesión guardada en el historial")
+    }
+
+    private fun showMessage(text: String) {
+        Snackbar.make(b.root, text, Snackbar.LENGTH_SHORT).show()
+    }
+
+    // ── Historial y respaldo ─────────────────────────────────────────────────
+
+    private fun setupHistory() {
+        sessions = store.loadSessions()
+        historyAdapter = HistoryAdapter(
+            sessions  = sessions,
+            onChanged = {
+                store.saveSessions(sessions)
+                updateHistoryEmpty()
+            },
+            onRemoved = { pos, session ->
+                Snackbar.make(b.root, "Sesión eliminada", Snackbar.LENGTH_LONG)
+                    .setAction("DESHACER") { historyAdapter.restoreItem(pos, session) }
+                    .show()
+            }
+        )
+        b.rvHistory.layoutManager = LinearLayoutManager(this)
+        b.rvHistory.adapter = historyAdapter
+        ItemTouchHelper(HistorySwipeCallback(historyAdapter)).attachToRecyclerView(b.rvHistory)
+        updateHistoryEmpty()
+
+        b.btnExport.setOnClickListener {
+            val date = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+            exportLauncher.launch("maestudio-respaldo-$date.json")
+        }
+        b.btnImport.setOnClickListener { importLauncher.launch(arrayOf("*/*")) }
+    }
+
+    private fun updateHistoryEmpty() {
+        b.tvHistoryEmpty.visibility = if (sessions.isEmpty()) View.VISIBLE else View.GONE
+        b.rvHistory.visibility      = if (sessions.isEmpty()) View.GONE else View.VISIBLE
+    }
+
+    private fun exportTo(uri: Uri) {
+        try {
+            val json = store.exportJson(logEntries, b.etSessionNotes.text.toString(), sessions)
+            val out = contentResolver.openOutputStream(uri, "wt")
+                ?: throw IllegalStateException("No se pudo abrir el archivo")
+            out.use { it.write(json.toByteArray()) }
+            showMessage("Respaldo guardado")
+        } catch (_: Exception) {
+            showMessage("No se pudo guardar el respaldo")
+        }
+    }
+
+    private fun confirmImport(uri: Uri) {
+        val backup = try {
+            val input = contentResolver.openInputStream(uri)
+                ?: throw IllegalStateException("No se pudo abrir el archivo")
+            store.parseBackup(input.bufferedReader().use { it.readText() })
+        } catch (_: Exception) {
+            showMessage("El archivo no es un respaldo válido")
+            return
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Importar respaldo")
+            .setMessage(
+                "Se reemplazarán el log, las notas y el historial actuales por " +
+                    "${backup.entries.size} ejercicio(s) y ${backup.sessions.size} sesión(es)."
+            )
+            .setNegativeButton("CANCELAR", null)
+            .setPositiveButton("REEMPLAZAR") { _, _ -> applyBackup(backup) }
+            .show()
+    }
+
+    @SuppressLint("NotifyDataSetChanged")
+    private fun applyBackup(backup: BackupData) {
+        logEntries.clear()
+        logEntries.addAll(backup.entries)
+        logAdapter.notifyDataSetChanged()
+        store.saveEntries(logEntries)
+
+        sessions.clear()
+        sessions.addAll(backup.sessions)
+        historyAdapter.notifyDataSetChanged()
+        store.saveSessions(sessions)
+        updateHistoryEmpty()
+
+        b.etSessionNotes.setText(backup.notes)
+        showMessage("Respaldo importado")
     }
 
     // ── Tabata setup ──────────────────────────────────────────────────────────
@@ -224,6 +387,7 @@ class MainActivity : AppCompatActivity() {
         setTabataButton(stop = true)
         sound.playWork()
         updateRunningDisplay()
+        updateKeepAlive()
         tabataHandler.postDelayed(tabataTicker, 500)
     }
 
@@ -233,6 +397,7 @@ class MainActivity : AppCompatActivity() {
         b.configSection.visibility  = View.VISIBLE
         b.runningSection.visibility = View.GONE
         setTabataButton(stop = false)
+        updateKeepAlive()
     }
 
     private fun advancePhase() {
@@ -285,42 +450,46 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupMetronome() {
         b.tvBpm.text = "%.1f".format(bpm)
+        metro.bpm = bpm
 
-        b.btnBpm5Minus.setOnClickListener  { changeBpm(-5.0f) }
-        b.btnBpm1Minus.setOnClickListener  { changeBpm(-1.0f) }
-        b.btnBpmD1Minus.setOnClickListener { changeBpm(-0.1f) }
-        b.btnBpm5Plus.setOnClickListener   { changeBpm(+5.0f) }
-        b.btnBpm1Plus.setOnClickListener   { changeBpm(+1.0f) }
-        b.btnBpmD1Plus.setOnClickListener  { changeBpm(+0.1f) }
+        b.btnBpm5Minus.setOnClickListener  { setBpm(bpm - 5.0f) }
+        b.btnBpm1Minus.setOnClickListener  { setBpm(bpm - 1.0f) }
+        b.btnBpmD1Minus.setOnClickListener { setBpm(bpm - 0.1f) }
+        b.btnBpm5Plus.setOnClickListener   { setBpm(bpm + 5.0f) }
+        b.btnBpm1Plus.setOnClickListener   { setBpm(bpm + 1.0f) }
+        b.btnBpmD1Plus.setOnClickListener  { setBpm(bpm + 0.1f) }
         b.btnMetro.setOnClickListener      { if (metroRunning) stopMetro() else startMetro() }
+        b.tvBpmReset.setOnClickListener    { setBpm(startBpm) }
 
-        b.sliderVolume.value = 85f
+        b.sliderVolume.value = volume
+        metro.volume = volume / 100f
         b.sliderVolume.addOnChangeListener { _, value, _ -> metro.volume = value / 100f }
 
-        b.sliderAccel.value = 0f
-        b.tvAccelVal.text = "0.0"
+        b.sliderAccel.value = accel
+        metro.accelerando = accel
+        b.tvAccelVal.text = "%.1f".format(accel)
         b.sliderAccel.addOnChangeListener { _, value, _ ->
             val rounded = (value * 10).roundToInt() / 10.0f
             metro.accelerando = rounded
             b.tvAccelVal.text = "%.1f".format(rounded)
         }
 
-        b.btn44.setOnClickListener { toggleFigura("4/4", 4, setOf(0)) }
-        b.btn34.setOnClickListener { toggleFigura("3/4", 3, setOf(0)) }
-        b.btn68.setOnClickListener { toggleFigura("6/8", 6, setOf(0, 3)) }
-        b.btn54.setOnClickListener { toggleFigura("5/4", 5, setOf(0)) }
+        b.btn44.setOnClickListener { toggleFigura("4/4") }
+        b.btn34.setOnClickListener { toggleFigura("3/4") }
+        b.btn68.setOnClickListener { toggleFigura("6/8") }
+        b.btn54.setOnClickListener { toggleFigura("5/4") }
+        applyFigura()
     }
 
-    private fun toggleFigura(sig: String, beats: Int, accents: Set<Int>) {
-        if (selectedFigura == sig) {
-            selectedFigura = ""
-            metro.beatsPerBar = 4
-            metro.accentBeats = emptySet()
-        } else {
-            selectedFigura = sig
-            metro.beatsPerBar = beats
-            metro.accentBeats = accents
-        }
+    private fun toggleFigura(sig: String) {
+        selectedFigura = if (selectedFigura == sig) "" else sig
+        applyFigura()
+    }
+
+    private fun applyFigura() {
+        val figura = figuras[selectedFigura]
+        metro.beatsPerBar = figura?.first ?: 4
+        metro.accentBeats = figura?.second ?: emptySet()
         updateFiguraButtons()
     }
 
@@ -342,15 +511,18 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun changeBpm(delta: Float) {
-        bpm = ((bpm + delta) * 10).roundToInt() / 10.0f
-        bpm = bpm.coerceIn(40.0f, 240.0f)
+    private fun setBpm(value: Float) {
+        bpm = ((value * 10).roundToInt() / 10.0f).coerceIn(MIN_BPM, MAX_BPM)
         b.tvBpm.text = "%.1f".format(bpm)
         metro.bpm = bpm
+        // Un ajuste manual pasa a ser el nuevo punto de partida.
+        startBpm = bpm
+        b.tvBpmReset.visibility = View.GONE
     }
 
     private fun startMetro() {
         startBpm = bpm
+        b.tvBpmReset.visibility = View.GONE
         metroRunning = true
         metro.bpm    = bpm
         metro.volume = b.sliderVolume.value / 100f
@@ -361,16 +533,21 @@ class MainActivity : AppCompatActivity() {
         }
         metro.start()
         setMetroButton(stop = true)
+        updateKeepAlive()
     }
 
     private fun stopMetro() {
         metroRunning = false
         metro.stop()
         metro.onBpmChanged = null
-        bpm = startBpm
-        b.tvBpm.text = "%.1f".format(bpm)
         metro.bpm = bpm
+        // Se conserva el BPM alcanzado; si cambio por accelerando, se ofrece volver.
+        if (bpm != startBpm) {
+            b.tvBpmReset.text = "↺ %.1f".format(startBpm)
+            b.tvBpmReset.visibility = View.VISIBLE
+        }
         setMetroButton(stop = false)
+        updateKeepAlive()
     }
 
     private fun setMetroButton(stop: Boolean) {
@@ -378,5 +555,35 @@ class MainActivity : AppCompatActivity() {
         b.btnMetro.backgroundTintList = ColorStateList.valueOf(
             getColor(if (stop) R.color.btn_stop else R.color.btn_start)
         )
+    }
+
+    // ── Segundo plano ────────────────────────────────────────────────────────
+
+    private fun updateKeepAlive() {
+        val active = metroRunning || phase != Phase.IDLE
+        if (active == keepAliveOn) return
+        keepAliveOn = active
+        val intent = Intent(this, PracticeService::class.java)
+        if (active) {
+            askNotificationPermission()
+            ContextCompat.startForegroundService(this, intent)
+        } else {
+            stopService(intent)
+        }
+    }
+
+    private fun askNotificationPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || askedNotifications) return
+        askedNotifications = true
+        val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+        if (granted != PackageManager.PERMISSION_GRANTED) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    private companion object {
+        const val SETTINGS = "maestudio_settings"
+        const val MIN_BPM = 40.0f
+        const val MAX_BPM = 240.0f
     }
 }

@@ -4,20 +4,53 @@ import android.annotation.SuppressLint
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.ViewGroup
+import android.widget.EditText
+import androidx.core.widget.doAfterTextChanged
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.RecyclerView
 import com.maestudio.databinding.ItemLogEntryBinding
 import java.util.Collections
-import kotlin.math.roundToInt
 
 class LogAdapter(
     val items: MutableList<LogEntry>,
-    private val onChanged: () -> Unit
+    private val onChanged: () -> Unit,
+    private val onRemoved: (Int, LogEntry) -> Unit,
+    private val onUseBpm: (LogEntry) -> Unit,
+    private val onRecordBpm: (Int) -> Unit
 ) : RecyclerView.Adapter<LogAdapter.VH>() {
 
     var dragHelper: ItemTouchHelper? = null
 
-    inner class VH(val b: ItemLogEntryBinding) : RecyclerView.ViewHolder(b.root)
+    inner class VH(val b: ItemLogEntryBinding) : RecyclerView.ViewHolder(b.root) {
+        // Evita tratar como edicion del usuario el texto que se carga al reciclar la fila.
+        var loading = false
+
+        init {
+            watch(b.etEjercicio) { entry, text -> entry.ejercicio = text }
+            watch(b.etBpm) { entry, text -> entry.bpm = text }
+            watch(b.etMeta) { entry, text -> entry.meta = text }
+            watch(b.etNotas) { entry, text -> entry.notas = text }
+
+            b.tvUseBpm.setOnClickListener {
+                items.getOrNull(bindingAdapterPosition)?.let(onUseBpm)
+            }
+            b.tvRecordBpm.setOnClickListener {
+                val pos = bindingAdapterPosition
+                if (pos != RecyclerView.NO_POSITION) onRecordBpm(pos)
+            }
+        }
+
+        private fun watch(field: EditText, update: (LogEntry, String) -> Unit) {
+            field.doAfterTextChanged { text ->
+                val entry = items.getOrNull(bindingAdapterPosition)
+                if (!loading && entry != null) {
+                    update(entry, text?.toString() ?: "")
+                    b.tvPercent.text = percentText(entry.bpm, entry.meta)
+                    onChanged()
+                }
+            }
+        }
+    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
         VH(ItemLogEntryBinding.inflate(LayoutInflater.from(parent.context), parent, false))
@@ -27,55 +60,13 @@ class LogAdapter(
         val entry = items[position]
         val b = holder.b
 
-        b.etEjercicio.setOnFocusChangeListener(null)
-        b.etBpm.setOnFocusChangeListener(null)
-        b.etMeta.setOnFocusChangeListener(null)
-        b.etNotas.setOnFocusChangeListener(null)
-
+        holder.loading = true
         b.etEjercicio.setText(entry.ejercicio)
         b.etBpm.setText(entry.bpm)
         b.etMeta.setText(entry.meta)
         b.etNotas.setText(entry.notas)
-        b.tvPercent.text = calcPercent(entry.bpm, entry.meta)
-
-        b.etEjercicio.setOnFocusChangeListener { _, has ->
-            if (!has) {
-                val pos = holder.bindingAdapterPosition
-                if (pos != RecyclerView.NO_POSITION) {
-                    items[pos].ejercicio = b.etEjercicio.text.toString()
-                    onChanged()
-                }
-            }
-        }
-        b.etBpm.setOnFocusChangeListener { _, has ->
-            if (!has) {
-                val pos = holder.bindingAdapterPosition
-                if (pos != RecyclerView.NO_POSITION) {
-                    items[pos].bpm = b.etBpm.text.toString()
-                    b.tvPercent.text = calcPercent(items[pos].bpm, items[pos].meta)
-                    onChanged()
-                }
-            }
-        }
-        b.etMeta.setOnFocusChangeListener { _, has ->
-            if (!has) {
-                val pos = holder.bindingAdapterPosition
-                if (pos != RecyclerView.NO_POSITION) {
-                    items[pos].meta = b.etMeta.text.toString()
-                    b.tvPercent.text = calcPercent(items[pos].bpm, items[pos].meta)
-                    onChanged()
-                }
-            }
-        }
-        b.etNotas.setOnFocusChangeListener { _, has ->
-            if (!has) {
-                val pos = holder.bindingAdapterPosition
-                if (pos != RecyclerView.NO_POSITION) {
-                    items[pos].notas = b.etNotas.text.toString()
-                    onChanged()
-                }
-            }
-        }
+        holder.loading = false
+        b.tvPercent.text = percentText(entry.bpm, entry.meta)
 
         b.ivDrag.setOnTouchListener { _, event ->
             if (event.actionMasked == MotionEvent.ACTION_DOWN) {
@@ -94,15 +85,17 @@ class LogAdapter(
     }
 
     fun removeItem(pos: Int) {
-        items.removeAt(pos)
+        val entry = items.removeAt(pos)
         notifyItemRemoved(pos)
         onChanged()
+        onRemoved(pos, entry)
     }
 
-    private fun calcPercent(bpm: String, meta: String): String {
-        val b = bpm.toFloatOrNull() ?: return "—"
-        val m = meta.toFloatOrNull()?.takeIf { it > 0f } ?: return "—"
-        return "${(b / m * 100).roundToInt()}%"
+    fun restoreItem(pos: Int, entry: LogEntry) {
+        val target = pos.coerceAtMost(items.size)
+        items.add(target, entry)
+        notifyItemInserted(target)
+        onChanged()
     }
 }
 

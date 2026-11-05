@@ -19,7 +19,12 @@ class MetronomePlayer {
 
     @Volatile private var running = false
 
-    private val rate        = 44100
+    // Cada start() abre una sesion nueva. Un hilo anterior que siga escribiendo
+    // audio ve que la suya ya no es la vigente y termina, aunque running vuelva
+    // a true por un doble toque rapido.
+    @Volatile private var session = 0
+
+    private val rate       = 44100
     private val clickBuf    = buildClick()
     private val accentBuf   = buildAccent()
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -55,14 +60,17 @@ class MetronomePlayer {
     fun start() {
         if (running) return
         running = true
-        Thread(::audioLoop, "metro-audio").apply { priority = Thread.MAX_PRIORITY }.start()
+        val id = session + 1
+        session = id
+        Thread({ audioLoop(id) }, "metro-audio").apply { priority = Thread.MAX_PRIORITY }.start()
     }
 
     fun stop() {
         running = false
+        session += 1
     }
 
-    private fun audioLoop() {
+    private fun audioLoop(id: Int) {
         val minBuf    = AudioTrack.getMinBufferSize(rate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
         val chunkSize = maxOf(minBuf, 512)
 
@@ -93,7 +101,7 @@ class MetronomePlayer {
         var beatInBar   = 0
         var activeBuf   = clickBuf
 
-        while (running) {
+        while (session == id) {
             val spb = rate * 60.0 / bpm
             val vol = volume
 
