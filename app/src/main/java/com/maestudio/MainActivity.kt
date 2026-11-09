@@ -9,9 +9,9 @@ import android.content.res.ColorStateList
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
+import android.os.PowerManager
 import android.os.SystemClock
+import android.provider.Settings
 import android.view.View
 import android.view.WindowManager
 import androidx.activity.result.contract.ActivityResultContracts
@@ -23,40 +23,28 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
 import com.google.android.material.tabs.TabLayout
+import com.maestudio.PracticeEngine.Phase
 import com.maestudio.databinding.ActivityMainBinding
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity(), PracticeEngine.Listener {
 
     private lateinit var b: ActivityMainBinding
     private lateinit var store: PracticeStore
-    private val sound = SoundPlayer()
 
-    // ── Tabata ───────────────────────────────────────────────────────────────
+    // El metronomo y el Tabata corren en PracticeEngine; esta pantalla solo los
+    // muestra y les da ordenes, asi siguen aunque Android la cierre.
+    private val engine = PracticeEngine
+    private val metro get() = engine.metro
 
-    enum class Phase { IDLE, WORK, REST }
+    // ── Tabata (configuracion) ───────────────────────────────────────────────
 
-    private var phase            = Phase.IDLE
-    private var workMins         = 5
-    private var restMins         = 2
-    private var totalCycles      = 5
-    private var currentCycle     = 0
-    private var remaining        = 0
-    private var phaseDurationSec = 0
-    private var phaseStartEpoch  = 0L
-
-    private val tabataHandler = Handler(Looper.getMainLooper())
-    private val tabataTicker  = object : Runnable {
-        override fun run() {
-            val elapsed = ((SystemClock.elapsedRealtime() - phaseStartEpoch) / 1000).toInt()
-            remaining = (phaseDurationSec - elapsed).coerceAtLeast(0)
-            updateRunningDisplay()
-            if (remaining <= 0) advancePhase() else tabataHandler.postDelayed(this, 500)
-        }
-    }
+    private var workMins    = 5
+    private var restMins    = 2
+    private var totalCycles = 5
 
     // ── Metronome ────────────────────────────────────────────────────────────
 
@@ -64,8 +52,6 @@ class MainActivity : AppCompatActivity() {
     private var startBpm       = 120.0f
     private var volume         = 85f
     private var accel          = 0f
-    private var metroRunning   = false
-    private val metro          = MetronomePlayer()
     private var selectedFigura = ""   // empty = libre (no accent)
 
     private val figuras = mapOf(
@@ -93,10 +79,9 @@ class MainActivity : AppCompatActivity() {
 
     // ── Segundo plano ────────────────────────────────────────────────────────
 
-    private var keepAliveOn = false
     private var askedNotifications = false
     private val notificationPermission =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { askBatteryExemption() }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -106,13 +91,25 @@ class MainActivity : AppCompatActivity() {
         b = ActivityMainBinding.inflate(layoutInflater)
         setContentView(b.root)
         store = PracticeStore(this)
+        engine.init(this)
         loadSettings()
+        // Si la practica siguio sin pantalla, se retoma el BPM que lleva sonando.
+        if (engine.metroRunning) bpm = metro.bpm
         setupTabs()
         setupTabata()
         setupMetronome()
         setupLog()
         setupHistory()
         savedInstanceState?.let { restore(it) }
+        engine.listener = this
+        renderPractice()
+    }
+
+    override fun onPracticeChanged() = renderPractice()
+
+    override fun onBpmChanged(bpm: Float) {
+        this.bpm = bpm
+        b.tvBpm.text = "%.1f".format(bpm)
     }
 
     override fun onPause() {
@@ -123,47 +120,35 @@ class MainActivity : AppCompatActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        if (phase != Phase.IDLE) {
-            outState.putInt("phase",         phase.ordinal)
-            outState.putInt("workMins",      workMins)
-            outState.putInt("restMins",      restMins)
-            outState.putInt("totalCycles",   totalCycles)
-            outState.putInt("currentCycle",  currentCycle)
-            outState.putInt("phaseDuration", phaseDurationSec)
-            outState.putLong("phaseStart",   phaseStartEpoch)
+        if (engine.phase != Phase.IDLE) {
+            outState.putInt("phase",         engine.phase.ordinal)
+            outState.putInt("workMins",      engine.workMins)
+            outState.putInt("restMins",      engine.restMins)
+            outState.putInt("totalCycles",   engine.totalCycles)
+            outState.putInt("currentCycle",  engine.currentCycle)
+            outState.putInt("phaseDuration", engine.phaseDurationSec)
+            outState.putLong("phaseStart",   engine.phaseStart)
         }
     }
 
+    // Solo actua si Android cerro el proceso: si no, el Tabata sigue vivo en el motor.
     private fun restore(state: Bundle) {
         val p = Phase.values().getOrNull(state.getInt("phase", -1)) ?: return
-        if (p == Phase.IDLE) return
-        workMins         = state.getInt("workMins",      workMins)
-        restMins         = state.getInt("restMins",      restMins)
-        totalCycles      = state.getInt("totalCycles",   totalCycles)
-        currentCycle     = state.getInt("currentCycle",  1)
-        phaseDurationSec = state.getInt("phaseDuration", 0)
-        phaseStartEpoch  = state.getLong("phaseStart",   SystemClock.elapsedRealtime())
-        phase            = p
-
-        val elapsed = ((SystemClock.elapsedRealtime() - phaseStartEpoch) / 1000).toInt()
-        remaining = (phaseDurationSec - elapsed).coerceAtLeast(0)
-
-        b.configSection.visibility  = View.GONE
-        b.runningSection.visibility = View.VISIBLE
-        setTabataButton(stop = true)
-        updateConfigDisplay()
-        updateRunningDisplay()
-        updateKeepAlive()
-
-        if (remaining > 0) tabataHandler.postDelayed(tabataTicker, 500)
-        else advancePhase()
+        engine.resumeTabata(
+            p,
+            state.getInt("workMins",      workMins),
+            state.getInt("restMins",      restMins),
+            state.getInt("totalCycles",   totalCycles),
+            state.getInt("currentCycle",  1),
+            state.getInt("phaseDuration", 0),
+            state.getLong("phaseStart",   SystemClock.elapsedRealtime())
+        )
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        tabataHandler.removeCallbacks(tabataTicker)
-        metro.stop()
-        if (keepAliveOn) stopService(Intent(this, PracticeService::class.java))
+        // No se detiene nada: la practica sigue hasta que se pare aqui o en la notificacion.
+        if (engine.listener === this) engine.listener = null
     }
 
     // ── Ajustes ──────────────────────────────────────────────────────────────
@@ -367,7 +352,14 @@ class MainActivity : AppCompatActivity() {
         b.btnRestPlus.setOnClickListener   { restMins    = (restMins    + 1).coerceAtMost(30);  updateConfigDisplay() }
         b.btnCycMinus.setOnClickListener   { totalCycles = (totalCycles - 1).coerceAtLeast(1);  updateConfigDisplay() }
         b.btnCycPlus.setOnClickListener    { totalCycles = (totalCycles + 1).coerceAtMost(20);  updateConfigDisplay() }
-        b.btnTabata.setOnClickListener     { if (phase == Phase.IDLE) startTabata() else stopTabata() }
+        b.btnTabata.setOnClickListener {
+            if (engine.phase == Phase.IDLE) {
+                engine.startTabata(workMins, restMins, totalCycles)
+                askBackgroundPermissions()
+            } else {
+                engine.stopTabata()
+            }
+        }
     }
 
     private fun updateConfigDisplay() {
@@ -376,63 +368,30 @@ class MainActivity : AppCompatActivity() {
         b.tvCyclesVal.text = totalCycles.toString()
     }
 
-    private fun startTabata() {
-        phase            = Phase.WORK
-        currentCycle     = 1
-        phaseDurationSec = workMins * 60
-        phaseStartEpoch  = SystemClock.elapsedRealtime()
-        remaining        = phaseDurationSec
-        b.configSection.visibility  = View.GONE
-        b.runningSection.visibility = View.VISIBLE
-        setTabataButton(stop = true)
-        sound.playWork()
-        updateRunningDisplay()
-        updateKeepAlive()
-        tabataHandler.postDelayed(tabataTicker, 500)
-    }
+    // ── Estado de la practica ────────────────────────────────────────────────
 
-    private fun stopTabata() {
-        tabataHandler.removeCallbacks(tabataTicker)
-        phase = Phase.IDLE
-        b.configSection.visibility  = View.VISIBLE
-        b.runningSection.visibility = View.GONE
-        setTabataButton(stop = false)
-        updateKeepAlive()
-    }
+    private fun renderPractice() {
+        val tabataOn = engine.phase != Phase.IDLE
+        b.configSection.visibility  = if (tabataOn) View.GONE else View.VISIBLE
+        b.runningSection.visibility = if (tabataOn) View.VISIBLE else View.GONE
+        setTabataButton(stop = tabataOn)
+        if (tabataOn) updateRunningDisplay()
 
-    private fun advancePhase() {
-        when (phase) {
-            Phase.WORK -> {
-                phase            = Phase.REST
-                phaseDurationSec = restMins * 60
-                phaseStartEpoch  = SystemClock.elapsedRealtime()
-                remaining        = phaseDurationSec
-                sound.playRest()
-                updateRunningDisplay()
-                tabataHandler.postDelayed(tabataTicker, 500)
-            }
-            Phase.REST -> {
-                if (currentCycle >= totalCycles) {
-                    sound.playComplete()
-                    stopTabata()
-                } else {
-                    currentCycle++
-                    phase            = Phase.WORK
-                    phaseDurationSec = workMins * 60
-                    phaseStartEpoch  = SystemClock.elapsedRealtime()
-                    remaining        = phaseDurationSec
-                    sound.playWork()
-                    updateRunningDisplay()
-                    tabataHandler.postDelayed(tabataTicker, 500)
-                }
-            }
-            Phase.IDLE -> {}
+        setMetroButton(stop = engine.metroRunning)
+        // Al detener se conserva el BPM alcanzado; si cambio por accelerando, se ofrece volver.
+        if (!engine.metroRunning && bpm != startBpm) {
+            b.tvBpmReset.text = "↺ %.1f".format(startBpm)
+            b.tvBpmReset.visibility = View.VISIBLE
+        } else {
+            b.tvBpmReset.visibility = View.GONE
         }
     }
 
     private fun updateRunningDisplay() {
+        val phase     = engine.phase
+        val remaining = engine.remaining
         b.tvCountdown.text = "%02d:%02d".format(remaining / 60, remaining % 60)
-        b.tvCycle.text     = "Ciclo $currentCycle / $totalCycles"
+        b.tvCycle.text     = "Ciclo ${engine.currentCycle} / ${engine.totalCycles}"
         val color = if (phase == Phase.WORK) getColor(R.color.work) else getColor(R.color.rest)
         b.tvPhase.text     = if (phase == Phase.WORK) "TRABAJO" else "DESCANSO"
         b.tvPhase.setTextColor(color)
@@ -458,7 +417,7 @@ class MainActivity : AppCompatActivity() {
         b.btnBpm5Plus.setOnClickListener   { setBpm(bpm + 5.0f) }
         b.btnBpm1Plus.setOnClickListener   { setBpm(bpm + 1.0f) }
         b.btnBpmD1Plus.setOnClickListener  { setBpm(bpm + 0.1f) }
-        b.btnMetro.setOnClickListener      { if (metroRunning) stopMetro() else startMetro() }
+        b.btnMetro.setOnClickListener      { if (engine.metroRunning) stopMetro() else startMetro() }
         b.tvBpmReset.setOnClickListener    { setBpm(startBpm) }
 
         b.sliderVolume.value = volume
@@ -522,32 +481,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun startMetro() {
         startBpm = bpm
-        b.tvBpmReset.visibility = View.GONE
-        metroRunning = true
-        metro.bpm    = bpm
-        metro.volume = b.sliderVolume.value / 100f
-        metro.accelerando = b.sliderAccel.value
-        metro.onBpmChanged = { newBpm ->
-            bpm = newBpm
-            b.tvBpm.text = "%.1f".format(newBpm)
-        }
-        metro.start()
-        setMetroButton(stop = true)
-        updateKeepAlive()
+        engine.startMetro(bpm, b.sliderVolume.value / 100f, b.sliderAccel.value)
+        askBackgroundPermissions()
     }
 
     private fun stopMetro() {
-        metroRunning = false
-        metro.stop()
-        metro.onBpmChanged = null
+        engine.stopMetro()
         metro.bpm = bpm
-        // Se conserva el BPM alcanzado; si cambio por accelerando, se ofrece volver.
-        if (bpm != startBpm) {
-            b.tvBpmReset.text = "↺ %.1f".format(startBpm)
-            b.tvBpmReset.visibility = View.VISIBLE
-        }
-        setMetroButton(stop = false)
-        updateKeepAlive()
     }
 
     private fun setMetroButton(stop: Boolean) {
@@ -559,25 +499,51 @@ class MainActivity : AppCompatActivity() {
 
     // ── Segundo plano ────────────────────────────────────────────────────────
 
-    private fun updateKeepAlive() {
-        val active = metroRunning || phase != Phase.IDLE
-        if (active == keepAliveOn) return
-        keepAliveOn = active
-        val intent = Intent(this, PracticeService::class.java)
-        if (active) {
-            askNotificationPermission()
-            ContextCompat.startForegroundService(this, intent)
+    // Primero la notificacion (lleva el boton Detener) y luego la bateria, para no
+    // abrir los dos avisos a la vez.
+    private fun askBackgroundPermissions() {
+        val needsNotifications = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            !askedNotifications &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+                PackageManager.PERMISSION_GRANTED
+        if (needsNotifications) {
+            askedNotifications = true
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else {
-            stopService(intent)
+            askBatteryExemption()
         }
     }
 
-    private fun askNotificationPermission() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || askedNotifications) return
-        askedNotifications = true
-        val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
-        if (granted != PackageManager.PERMISSION_GRANTED) {
-            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+    // Algunas marcas (Samsung, Xiaomi, Huawei...) cierran apps en segundo plano aun
+    // con el servicio activo; quedar fuera del ahorro de bateria lo evita. Se pide una vez.
+    private fun askBatteryExemption() {
+        val prefs = getSharedPreferences(SETTINGS, Context.MODE_PRIVATE)
+        val power = getSystemService(PowerManager::class.java)
+        if (prefs.getBoolean("askedBattery", false) || power.isIgnoringBatteryOptimizations(packageName)) return
+        prefs.edit().putBoolean("askedBattery", true).apply()
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Práctica sin cortes")
+            .setMessage(
+                "Para que el metrónomo y el Tabata no se detengan con la pantalla apagada, " +
+                    "permite que MAEStudio funcione sin restricciones de batería."
+            )
+            .setNegativeButton("AHORA NO", null)
+            .setPositiveButton("PERMITIR") { _, _ -> openBatterySettings() }
+            .show()
+    }
+
+    @SuppressLint("BatteryLife")
+    private fun openBatterySettings() {
+        try {
+            startActivity(
+                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName"))
+            )
+        } catch (_: Exception) {
+            try {
+                startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+            } catch (_: Exception) {
+                showMessage("Busca MAEStudio en Ajustes > Batería y quita las restricciones")
+            }
         }
     }
 

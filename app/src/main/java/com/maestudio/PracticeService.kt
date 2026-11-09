@@ -4,6 +4,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
@@ -14,8 +15,8 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 
 /**
- * Mantiene viva la app mientras el metronomo o el Tabata estan activos, para que
- * Android no los corte con la pantalla apagada. La logica sigue en MainActivity.
+ * Mantiene vivo el proceso mientras el metronomo o el Tabata estan activos, para que
+ * Android no los corte con la pantalla apagada. La logica esta en PracticeEngine.
  */
 class PracticeService : Service() {
 
@@ -34,12 +35,20 @@ class PracticeService : Service() {
             Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE
         )
+        // La practica sigue aunque se cierre la app, asi que se puede detener desde aqui.
+        val stop = PendingIntent.getBroadcast(
+            this, 1,
+            Intent(this, StopReceiver::class.java),
+            PendingIntent.FLAG_IMMUTABLE
+        )
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentTitle("MAEStudio")
             .setContentText("Práctica en curso")
             .setContentIntent(open)
+            .addAction(android.R.drawable.ic_media_pause, "Detener", stop)
             .setOngoing(true)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .build()
 
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -63,6 +72,15 @@ class PracticeService : Service() {
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
         super.onDestroy()
+    }
+
+    class StopReceiver : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            PracticeEngine.init(context)
+            PracticeEngine.stopAll()
+            // Por si el servicio quedo encendido sin practica activa.
+            context.stopService(Intent(context, PracticeService::class.java))
+        }
     }
 
     private companion object {
