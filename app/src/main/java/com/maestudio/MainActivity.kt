@@ -10,7 +10,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
-import android.os.SystemClock
 import android.provider.Settings
 import android.view.View
 import android.view.WindowManager
@@ -100,7 +99,7 @@ class MainActivity : AppCompatActivity(), PracticeEngine.Listener {
         setupMetronome()
         setupLog()
         setupHistory()
-        savedInstanceState?.let { restore(it) }
+        engine.restoreTabata()
         engine.listener = this
         renderPractice()
     }
@@ -116,33 +115,6 @@ class MainActivity : AppCompatActivity(), PracticeEngine.Listener {
         super.onPause()
         saveSettings()
         store.saveEntries(logEntries)
-    }
-
-    override fun onSaveInstanceState(outState: Bundle) {
-        super.onSaveInstanceState(outState)
-        if (engine.phase != Phase.IDLE) {
-            outState.putInt("phase",         engine.phase.ordinal)
-            outState.putInt("workMins",      engine.workMins)
-            outState.putInt("restMins",      engine.restMins)
-            outState.putInt("totalCycles",   engine.totalCycles)
-            outState.putInt("currentCycle",  engine.currentCycle)
-            outState.putInt("phaseDuration", engine.phaseDurationSec)
-            outState.putLong("phaseStart",   engine.phaseStart)
-        }
-    }
-
-    // Solo actua si Android cerro el proceso: si no, el Tabata sigue vivo en el motor.
-    private fun restore(state: Bundle) {
-        val p = Phase.values().getOrNull(state.getInt("phase", -1)) ?: return
-        engine.resumeTabata(
-            p,
-            state.getInt("workMins",      workMins),
-            state.getInt("restMins",      restMins),
-            state.getInt("totalCycles",   totalCycles),
-            state.getInt("currentCycle",  1),
-            state.getInt("phaseDuration", 0),
-            state.getLong("phaseStart",   SystemClock.elapsedRealtime())
-        )
     }
 
     override fun onDestroy() {

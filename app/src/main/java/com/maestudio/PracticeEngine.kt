@@ -93,7 +93,7 @@ object PracticeEngine {
         metroRunning = false
         // El BPM alcanzado se guarda aqui: si se detuvo desde la notificacion con la
         // app cerrada, la pantalla lo leera al abrirse en vez de volver a uno anterior.
-        app.getSharedPreferences(SETTINGS, Context.MODE_PRIVATE).edit()
+        prefs().edit()
             .putFloat("bpm", metro.bpm)
             .apply()
         changed()
@@ -110,20 +110,43 @@ object PracticeEngine {
         beginPhase(Phase.WORK, workMins * 60, SystemClock.elapsedRealtime())
     }
 
-    /** Retoma un Tabata guardado por la pantalla cuando Android cerro el proceso. */
-    fun resumeTabata(p: Phase, work: Int, rest: Int, cycles: Int, cycle: Int, durationSec: Int, start: Long) {
-        if (p == Phase.IDLE || phase != Phase.IDLE) return
-        workMins = work
-        restMins = rest
-        totalCycles = cycles
-        currentCycle = cycle
-        beginPhase(p, durationSec, start)
+    /**
+     * Retoma un Tabata que quedo a medias porque Android cerro el proceso. Avanza
+     * las fases que se cumplieron mientras la app estuvo cerrada, asi el contador
+     * sigue donde deberia ir y no vuelve a empezar.
+     */
+    fun restoreTabata() {
+        if (phase != Phase.IDLE) return
+        val prefs = prefs()
+        val saved = Phase.values().getOrNull(prefs.getInt(K_PHASE, -1))
+        if (saved == null || saved == Phase.IDLE) return
+
+        workMins = prefs.getInt(K_WORK, 5)
+        restMins = prefs.getInt(K_REST, 2)
+        totalCycles = prefs.getInt(K_CYCLES, 1)
+        currentCycle = prefs.getInt(K_CYCLE, 1)
+        var p: Phase = saved
+        var duration = prefs.getInt(K_DURATION, 0)
+        // Se guarda la hora del reloj porque elapsedRealtime vuelve a cero al reiniciar el telefono.
+        val now = SystemClock.elapsedRealtime()
+        var start = now - (System.currentTimeMillis() - prefs.getLong(K_START_WALL, 0L))
+
+        while (p != Phase.IDLE && now - start >= duration * 1000L) {
+            start += duration * 1000L
+            when {
+                p == Phase.WORK -> { p = Phase.REST; duration = restMins * 60 }
+                currentCycle >= totalCycles -> p = Phase.IDLE
+                else -> { currentCycle++; p = Phase.WORK; duration = workMins * 60 }
+            }
+        }
+        if (p == Phase.IDLE) clearTabata() else beginPhase(p, duration, start)
     }
 
     fun stopTabata() {
         if (phase == Phase.IDLE) return
         handler.removeCallbacks(ticker)
         phase = Phase.IDLE
+        clearTabata()
         changed()
     }
 
@@ -136,9 +159,29 @@ object PracticeEngine {
         phase = p
         phaseDurationSec = durationSec
         phaseStart = start
+        saveTabata()
         handler.removeCallbacks(ticker)
         handler.post(ticker)
         changed()
+    }
+
+    private fun prefs() = app.getSharedPreferences(SETTINGS, Context.MODE_PRIVATE)
+
+    private fun saveTabata() {
+        val startWall = System.currentTimeMillis() - (SystemClock.elapsedRealtime() - phaseStart)
+        prefs().edit()
+            .putInt(K_PHASE, phase.ordinal)
+            .putInt(K_WORK, workMins)
+            .putInt(K_REST, restMins)
+            .putInt(K_CYCLES, totalCycles)
+            .putInt(K_CYCLE, currentCycle)
+            .putInt(K_DURATION, phaseDurationSec)
+            .putLong(K_START_WALL, startWall)
+            .apply()
+    }
+
+    private fun clearTabata() {
+        prefs().edit().remove(K_PHASE).apply()
     }
 
     private fun advancePhase() {
@@ -177,4 +220,11 @@ object PracticeEngine {
 
     const val SETTINGS = "maestudio_settings"
     private const val TICK_MS = 500L
+    private const val K_PHASE = "tabataPhase"
+    private const val K_WORK = "tabataWork"
+    private const val K_REST = "tabataRest"
+    private const val K_CYCLES = "tabataCycles"
+    private const val K_CYCLE = "tabataCycle"
+    private const val K_DURATION = "tabataDuration"
+    private const val K_START_WALL = "tabataStartWall"
 }
