@@ -548,7 +548,7 @@ class MainActivity : AppCompatActivity(), PracticeEngine.Listener {
     }
 
     private companion object {
-        const val SETTINGS = "maestudio_settings"
+        const val SETTINGS = PracticeEngine.SETTINGS
         const val MIN_BPM = 40.0f
         const val MAX_BPM = 240.0f
     }

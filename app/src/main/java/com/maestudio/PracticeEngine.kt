@@ -91,6 +91,11 @@ object PracticeEngine {
         if (!metroRunning) return
         metro.stop()
         metroRunning = false
+        // El BPM alcanzado se guarda aqui: si se detuvo desde la notificacion con la
+        // app cerrada, la pantalla lo leera al abrirse en vez de volver a uno anterior.
+        app.getSharedPreferences(SETTINGS, Context.MODE_PRIVATE).edit()
+            .putFloat("bpm", metro.bpm)
+            .apply()
         changed()
     }
 
@@ -170,5 +175,6 @@ object PracticeEngine {
         if (serviceOn) ContextCompat.startForegroundService(app, intent) else app.stopService(intent)
     }
 
+    const val SETTINGS = "maestudio_settings"
     private const val TICK_MS = 500L
 }
